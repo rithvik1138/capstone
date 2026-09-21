@@ -40,8 +40,8 @@ public class DeviceService {
     private final PrometheusQueryService prometheusQueryService;
     private final ObjectMapper objectMapper;
 
-    @Value("${app.server.base-url:http://localhost:8080}")
-    private String serverBaseUrl;
+    @Value("${app.public-base-url:${app.server.base-url:http://localhost:8080}}")
+    private String publicBaseUrl;
 
     @Autowired
     public DeviceService(DeviceRepository deviceRepository,
@@ -84,11 +84,8 @@ public class DeviceService {
         deviceToken.setIsRevoked(false);
         deviceTokenRepository.save(deviceToken);
 
-        String linuxInstallCmd = String.format("curl -sSL %s/install.sh | sudo bash -s -- --token=%s --uuid=%s --server=%s",
-                serverBaseUrl, rawToken, deviceUuid, serverBaseUrl);
-
-        String windowsInstallCmd = String.format("powershell -ExecutionPolicy Bypass -Command \"Invoke-WebRequest -Uri '%s/install.ps1' -OutFile 'install.ps1'; .\\install.ps1 -Token '%s' -Uuid '%s' -ServerUrl '%s'\"",
-                serverBaseUrl, rawToken, deviceUuid, serverBaseUrl);
+        String linuxInstallCmd = buildLinuxInstallCommand(rawToken, deviceUuid);
+        String windowsInstallCmd = buildWindowsInstallCommand(rawToken, deviceUuid);
 
         auditService.logAction(user, "REGISTER_DEVICE", "DEVICE", savedDevice.getId().toString(),
                 "Device registered: " + savedDevice.getDeviceName() + " (" + savedDevice.getDeviceUuid() + ")");
@@ -198,11 +195,8 @@ public class DeviceService {
         deviceToken.setIsRevoked(false);
         deviceTokenRepository.save(deviceToken);
 
-        String linuxInstallCmd = String.format("curl -sSL %s/install.sh | sudo bash -s -- --token=%s --uuid=%s --server=%s",
-                serverBaseUrl, rawToken, device.getDeviceUuid(), serverBaseUrl);
-
-        String windowsInstallCmd = String.format("powershell -ExecutionPolicy Bypass -Command \"Invoke-WebRequest -Uri '%s/install.ps1' -OutFile 'install.ps1'; .\\install.ps1 -Token '%s' -Uuid '%s' -ServerUrl '%s'\"",
-                serverBaseUrl, rawToken, device.getDeviceUuid(), serverBaseUrl);
+        String linuxInstallCmd = buildLinuxInstallCommand(rawToken, device.getDeviceUuid());
+        String windowsInstallCmd = buildWindowsInstallCommand(rawToken, device.getDeviceUuid());
 
         User user = userRepository.findById(currentUser.getId()).orElse(null);
         auditService.logAction(user, "REGENERATE_DEVICE_TOKEN", "DEVICE", deviceId.toString(),
@@ -292,5 +286,28 @@ public class DeviceService {
         if (device.getUser() == null || !device.getUser().getId().equals(currentUser.getId())) {
             throw new UnauthorizedAccessException("You are not authorized to access this device");
         }
+    }
+
+    private String getNormalizedPublicBaseUrl() {
+        if (publicBaseUrl == null || publicBaseUrl.trim().isEmpty()) {
+            return "http://localhost:8080";
+        }
+        String trimmed = publicBaseUrl.trim();
+        if (trimmed.endsWith("/")) {
+            return trimmed.substring(0, trimmed.length() - 1);
+        }
+        return trimmed;
+    }
+
+    private String buildLinuxInstallCommand(String rawToken, String deviceUuid) {
+        String baseUrl = getNormalizedPublicBaseUrl();
+        return String.format("curl -sSL %s/install.sh | sudo bash -s -- --token=%s --uuid=%s --server=%s",
+                baseUrl, rawToken, deviceUuid, baseUrl);
+    }
+
+    private String buildWindowsInstallCommand(String rawToken, String deviceUuid) {
+        String baseUrl = getNormalizedPublicBaseUrl();
+        return String.format("powershell -ExecutionPolicy Bypass -Command \"Invoke-WebRequest -Uri '%s/install.ps1' -OutFile 'install.ps1'; .\\install.ps1 -Token '%s' -Uuid '%s' -ServerUrl '%s'\"",
+                baseUrl, rawToken, deviceUuid, baseUrl);
     }
 }
