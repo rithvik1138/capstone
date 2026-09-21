@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: cloudmonitoring_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: capstone
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-Rithvik1138}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ../database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-Rithvik1138}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cloud-net
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: cloudmonitoring_prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../monitoring/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    networks:
+      - cloud-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: cloudmonitoring_grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin_secure_password
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      - ../monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ../monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - cloud-net
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: cloudmonitoring_backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/capstone?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-Rithvik1138}
+      PROMETHEUS_BASE_URL: http://prometheus:9090
+      APP_JWT_SECRET: ProductionUltraSecureSecretKeyForCloudMonitoringSystem2026WithMinimum512BitsLengthRequiredForHmacShaAlgorithmSecurity
+      APP_JWT_EXPIRATION_MS: 86400000
+      OMNIROUTE_API_KEY: ${OMNIROUTE_API_KEY:-sk-or-dummy-key-for-container-boot}
+      OMNIROUTE_BASE_URL: https://api.omniroute.ai/v1
+    depends_on:
+      mysql:
+        condition: service_healthy
+      prometheus:
+        condition: service_started
+    networks:
+      - cloud-net
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+    container_name: cloudmonitoring_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - cloud-net
+
+volumes:
+  mysql_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  cloud-net:
+    driver: bridge

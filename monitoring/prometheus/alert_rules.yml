@@ -1,0 +1,29 @@
+groups:
+  - name: node_alerts
+    rules:
+      - alert: HostHighCpuLoad
+        expr: (node_cpu_usage_percent > 90) or (system_cpu_usage_percent > 90)
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Host high CPU load (device {{ $labels.device_uuid }})"
+          description: "CPU load is > 90% (current value: {{ $value }}%)"
+
+      - alert: HostHighMemoryUsage
+        expr: (node_memory_usage_percent > 90) or ((node_memory_used_bytes / node_memory_total_bytes) * 100 > 90)
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host high memory usage (device {{ $labels.device_uuid }})"
+          description: "Memory usage is > 90% (current value: {{ $value }}%)"
+
+      - alert: HostLowDiskSpace
+        expr: (node_disk_usage_percent > 90) or ((node_disk_used_bytes / node_disk_total_bytes) * 100 > 90)
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Host low disk space (device {{ $labels.device_uuid }})"
+          description: "Disk space is > 90% full (current value: {{ $value }}%)"
