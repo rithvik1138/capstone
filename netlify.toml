@@ -4,6 +4,12 @@
   publish = "dist"
 
 [[redirects]]
+  from = "/api/actuator/health"
+  to = "http://43.204.110.90:8080/actuator/health"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/api/*"
   to = "http://43.204.110.90:8080/api/:splat"
   status = 200
